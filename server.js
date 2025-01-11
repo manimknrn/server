@@ -56,7 +56,7 @@ io.on('connection', (socket) => {
 
             // Emit updated 5 records to the client
             socket.emit('liveData', {
-                records: updatedRecords.slice(0, 5),
+                records: updatedRecords,
                 batchNumber: currentBatch,
                 totalBatches: Math.ceil(numRecords / batchSize),
             });
