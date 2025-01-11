@@ -27,44 +27,63 @@ function generateRecords(N) {
     return records;
 }
 
+
 let currentBatch = 0;
 const BATCH_SIZE = 10;
 
 io.on('connection', (socket) => {
-    console.log('a user connected');
+  console.log('a user connected');
 
-    socket.on('requestRecords', (N) => {
-        const records = generateRecords(N);
-        const totalBatches = Math.ceil(N / BATCH_SIZE);
+  socket.on('requestRecords', ({ numRecords, batchSize }) => {
+    const records = generateRecords(numRecords);  // Generate records based on N
+    const totalBatches = Math.ceil(numRecords / batchSize);
 
-        function sendBatch() {
-            const batch = records.slice(currentBatch * BATCH_SIZE, (currentBatch + 1) * BATCH_SIZE);
-            batch.forEach((record) => {
-                record.price = (Math.random() * 1000).toFixed(2); // Simulate price change
-                record.lastUpdate = new Date().toISOString();
-            });
+    function sendBatch() {
+      const batch = records.slice(currentBatch * batchSize, (currentBatch + 1) * batchSize);
 
-            const startTime = Date.now();
-            socket.emit('liveData', batch);
-            const endTime = Date.now();
-            const delay = endTime - startTime;
+      // Simulate price changes
+      batch.forEach((record) => {
+        record.price = (Math.random() * 1000).toFixed(2);
+        record.lastUpdate = new Date().toISOString();
+      });
 
-            socket.emit('batchStats', { delay, batchNumber: currentBatch + 1, totalBatches });
+      const startTime = Date.now();
+      socket.emit('liveData', { records: batch });
+      const endTime = Date.now();
+      const delay = endTime - startTime;
 
-            currentBatch++;
-            if (currentBatch < totalBatches) {
-                setTimeout(sendBatch, 100);
-            } else {
-                socket.emit('complete');
-            }
-        }
+      socket.emit('batchStats', {
+        delay,
+        batchNumber: currentBatch + 1,
+        totalBatches,
+      });
 
-        sendBatch();
+      currentBatch++;
+      if (currentBatch < totalBatches) {
+        setTimeout(sendBatch, 100);
+      } else {
+        socket.emit('complete');
+      }
+    }
+
+    sendBatch();
+  });
+
+  socket.on('requestRangeRecords', ({ startRow, endRow, batchSize }) => {
+    const records = generateRecords(endRow - startRow); // Generate records for the requested range
+
+    // Simulate price changes
+    records.forEach((record) => {
+      record.price = (Math.random() * 1000).toFixed(2);
+      record.lastUpdate = new Date().toISOString();
     });
 
-    socket.on('disconnect', () => {
-        console.log('user disconnected');
-    });
+    socket.emit('liveData', { records });
+  });
+
+  socket.on('disconnect', () => {
+    console.log('user disconnected');
+  });
 });
 
 const PORT = process.env.PORT || 3000;
