@@ -1,4 +1,15 @@
-const io = require('socket.io')(3000); // Assuming your server is running on port 3000
+// const io = require('socket.io')(3000); // Assuming your server is running on port 3000
+const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
+const cors = require('cors');
+
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server, { cors: { origin: '*' } });
+
+app.use(cors());
+app.use(express.json());
 
 // Simulate data generation
 function generateRecords(N) {
