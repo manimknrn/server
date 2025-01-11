@@ -5,73 +5,69 @@ const cors = require('cors');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, {
-    cors: {
-        origin: '*',
-        methods: ["GET", "POST"]
-    }
-});
+const io = socketIo(server, { cors: { origin: '*' } });
 
 app.use(cors());
 app.use(express.json());
 
-// REST API endpoint
-app.get('/api/data', (req, res) => {
-    res.json({ message: 'Hello from the Node.js server!' });
-});
+// Utility function to generate random trade data
+const generateTradeData = (N) => {
+  const assets = ['Gold', 'Silver', 'Oil', 'Bitcoin', 'Ethereum', 'Apple', 'Tesla'];
+  const types = ['Buy', 'Sell'];
+  const data = [];
+  for (let i = 0; i < N; i++) {
+    data.push({
+      id: i + 1,
+      assetName: assets[Math.floor(Math.random() * assets.length)],
+      price: (Math.random() * 1000 + 100).toFixed(2), // Random price between 100 and 1100
+      lastUpdate: new Date().toISOString(),
+      type: types[Math.floor(Math.random() * types.length)],
+    });
+  }
+  return data;
+};
 
 // WebSocket connection
 io.on('connection', (socket) => {
-    console.log('A client connected');
-    setInterval(() => {
-        socket.emit('tradeUpdates', { timestamp: new Date() });
-    }, 3000);
-    socket.on('disconnect', () => {
-        console.log('A client disconnected');
-    });
-});
+  console.log('A client connected');
 
-let records = Array.from({ length: 20000 }, (_, index) => ({
-    id: index + 1,
-    assetName: `Asset ${index + 1}`,
-    price: 10 * index, // Price between 0-1000
-    lastUpdate: new Date().toISOString(),
-    type: index % 2 === 0 ? 'Stock ' + (index + 1) : 'Bond ' + (index + 1), // Alternate between Stock and Bond
-}));
-// API to fetch all records
-app.get('/api/trades', (req, res) => {
-    res.json(records);
-});
+  // Listen for 'requestRecords' event from the client
+  socket.on('requestRecords', (N) => {
+    console.log(`Client requested ${N} records`);
 
-let updateRecords = [
-    {
-        "assetName": "assetName 1",
-        "price": 199990,
-        "lastUpdate": 1736500416,
-        "type": "type 1",
-        "id": 1
-    },
-    {
-        "assetName": "assetName 2",
-        "price": 199980,
-        "lastUpdate": 1736500356,
-        "type": "type 2",
-        "id": 2
-    },
-    {
-        "assetName": "assetName 2",
-        "price": 199980,
-        "lastUpdate": 1736500356,
-        "type": "type 2",
-        "id": 6
-    }
-]
-// API to fetch all records
-app.get('/api/tradeUpdates', (req, res) => {
-    res.json(updateRecords);
+    const data = generateTradeData(N); // Generate the initial data
+    let emitCount = 0; // Track how many times data has been emitted
+
+    // Emit data at intervals and close connection after N emissions
+    const intervalId = setInterval(() => {
+      if (emitCount >= N) {
+        clearInterval(intervalId); // Stop the interval
+        socket.disconnect(); // Close the WebSocket connection
+        console.log(`Closed WebSocket after emitting ${N} updates`);
+        return;
+      }
+
+      // Update the prices dynamically for the existing data
+      const updatedData = data.map((record) => ({
+        ...record,
+        price: (parseFloat(record.price) + (Math.random() - 0.5) * 10).toFixed(2), // Random price change
+        lastUpdate: new Date().toISOString(),
+      }));
+
+      // Emit the updated data
+      socket.emit('liveData', updatedData);
+      emitCount++;
+      console.log(`Emitted update ${emitCount} of ${N}`);
+    }, 2000); // Send updates every 2 seconds
+  });
+
+  // Handle client disconnection
+  socket.on('disconnect', () => {
+    console.log('A client disconnected');
+  });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
