@@ -1,73 +1,61 @@
-const express = require('express');
-const http = require('http');
-const socketIo = require('socket.io');
-const cors = require('cors');
+const io = require('socket.io')(3000); // Assuming your server is running on port 3000
 
-const app = express();
-const server = http.createServer(app);
-const io = socketIo(server, { cors: { origin: '*' } });
-
-app.use(cors());
-app.use(express.json());
-
-// Utility function to generate random trade data
-const generateTradeData = (N) => {
-  const assets = ['Gold', 'Silver', 'Oil', 'Bitcoin', 'Ethereum', 'Apple', 'Tesla'];
-  const types = ['Buy', 'Sell'];
-  const data = [];
+// Simulate data generation
+function generateRecords(N) {
+  const records = [];
   for (let i = 0; i < N; i++) {
-    data.push({
+    records.push({
       id: i + 1,
-      assetName: assets[Math.floor(Math.random() * assets.length)],
-      price: (Math.random() * 1000 + 100).toFixed(2), // Random price between 100 and 1100
+      assetName: `Asset-${i + 1}`,
+      price: (Math.random() * 1000).toFixed(2),
       lastUpdate: new Date().toISOString(),
-      type: types[Math.floor(Math.random() * types.length)],
+      type: i % 2 === 0 ? 'buy' : 'sell',
     });
   }
-  return data;
-};
+  return records;
+}
 
-// WebSocket connection
+let currentBatch = 0;
+const BATCH_SIZE = 10; // Update 10 records at a time
+
 io.on('connection', (socket) => {
-  console.log('A client connected');
+  console.log('a user connected');
 
-  // Listen for 'requestRecords' event from the client
   socket.on('requestRecords', (N) => {
-    console.log(`Client requested ${N} records`);
+    const records = generateRecords(N); // Generate records
+    const totalBatches = Math.ceil(N / BATCH_SIZE);
 
-    const data = generateTradeData(N); // Generate the initial data
-    let emitCount = 0; // Track how many times data has been emitted
+    function sendBatch() {
+      const batch = records.slice(currentBatch * BATCH_SIZE, (currentBatch + 1) * BATCH_SIZE);
 
-    // Emit data at intervals and close connection after N emissions
-    const intervalId = setInterval(() => {
-      if (emitCount >= N) {
-        clearInterval(intervalId); // Stop the interval
-        socket.disconnect(); // Close the WebSocket connection
-        console.log(`Closed WebSocket after emitting ${N} updates`);
-        return;
+      // Simulate price change for these 10 records
+      batch.forEach((record) => {
+        record.price = (Math.random() * 1000).toFixed(2); // Random price for demo purposes
+        record.lastUpdate = new Date().toISOString(); // Update lastUpdate field
+      });
+
+      const startTime = Date.now();
+
+      socket.emit('liveData', batch); // Emit batch of 10 records with updated prices
+
+      const endTime = Date.now();
+      const delay = endTime - startTime; // Calculate the delay
+
+      // Emit delay stats
+      socket.emit('batchStats', { delay, batchNumber: currentBatch + 1, totalBatches });
+
+      currentBatch++;
+      if (currentBatch < totalBatches) {
+        setTimeout(sendBatch, 100); // Slight delay between batches
+      } else {
+        socket.emit('complete'); // Notify client that data is complete
       }
+    }
 
-      // Update the prices dynamically for the existing data
-      const updatedData = data.map((record) => ({
-        ...record,
-        price: (parseFloat(record.price) + (Math.random() - 0.5) * 10).toFixed(2), // Random price change
-        lastUpdate: new Date().toISOString(),
-      }));
-
-      // Emit the updated data
-      socket.emit('liveData', updatedData);
-      emitCount++;
-      console.log(`Emitted update ${emitCount} of ${N}`);
-    }, 2000); // Send updates every 2 seconds
+    sendBatch();
   });
 
-  // Handle client disconnection
   socket.on('disconnect', () => {
-    console.log('A client disconnected');
+    console.log('user disconnected');
   });
-});
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
 });
