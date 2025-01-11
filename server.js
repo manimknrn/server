@@ -28,58 +28,58 @@ function generateRecords(N) {
 }
 
 
-let currentBatch = 0;
-const BATCH_SIZE = 10;
+// let currentBatch = 0;
+// const BATCH_SIZE = 10;
 
 io.on('connection', (socket) => {
   console.log('a user connected');
 
-  socket.on('requestRecords', ({ numRecords, batchSize }) => {
+  socket.on('getLiveData', (data) => {
+    const { numRecords, batchSize } = data;
     const records = generateRecords(numRecords);  // Generate records based on N
+    
+    socket.emit('liveData', { records: records.slice(0, batchSize), batchNumber: 1, totalBatches: Math.ceil(numRecords / batchSize) });
+    
+    let count = batchSize;
     const totalBatches = Math.ceil(numRecords / batchSize);
 
-    function sendBatch() {
-      const batch = records.slice(currentBatch * batchSize, (currentBatch + 1) * batchSize);
+    // Update 5 records per emit (simulating price and lastUpdate changes)
+    setInterval(() => {
+        if (count > numRecords) {
+          count = numRecords;
+        }
+        // Simulating price updates for 5 random records
+        const updatedRecords = records.slice(0, count);
+        updatedRecords.slice(0, 5).forEach(record => {
+          record.price = (Math.random() * 1000).toFixed(2);
+          record.lastUpdate = new Date().toISOString();
+        });
+  
+        socket.emit('liveData', {
+          records: updatedRecords.slice(0, 5),
+          batchNumber: Math.ceil(count / batchSize),
+          totalBatches: totalBatches,
+        });
+  
+        count += 5; // Update 5 records at a time
+        if (count >= numRecords) {
+            clearInterval(this);
+          }
+        }, 2000);  // Emit every 2 seconds
 
-      // Simulate price changes
-      batch.forEach((record) => {
-        record.price = (Math.random() * 1000).toFixed(2);
-        record.lastUpdate = new Date().toISOString();
-      });
-
-      const startTime = Date.now();
-      socket.emit('liveData', { records: batch });
-      const endTime = Date.now();
-      const delay = endTime - startTime;
-
-      socket.emit('batchStats', {
-        delay,
-        batchNumber: currentBatch + 1,
-        totalBatches,
-      });
-
-      currentBatch++;
-      if (currentBatch < totalBatches) {
-        setTimeout(sendBatch, 100);
-      } else {
-        socket.emit('complete');
-      }
-    }
-
-    sendBatch();
   });
 
-  socket.on('requestRangeRecords', ({ startRow, endRow, batchSize }) => {
-    const records = generateRecords(endRow - startRow); // Generate records for the requested range
+//   socket.on('requestRangeRecords', ({ startRow, endRow, batchSize }) => {
+//     const records = generateRecords(endRow - startRow); // Generate records for the requested range
 
-    // Simulate price changes
-    records.forEach((record) => {
-      record.price = (Math.random() * 1000).toFixed(2);
-      record.lastUpdate = new Date().toISOString();
-    });
+//     // Simulate price changes
+//     records.forEach((record) => {
+//       record.price = (Math.random() * 1000).toFixed(2);
+//       record.lastUpdate = new Date().toISOString();
+//     });
 
-    socket.emit('liveData', { records });
-  });
+//     socket.emit('liveData', { records });
+//   });
 
   socket.on('disconnect', () => {
     console.log('user disconnected');
