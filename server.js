@@ -1,17 +1,27 @@
-// const io = require('socket.io')(3000); // Assuming your server is running on port 3000
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 
+// Create the Express app
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, { cors: { origin: '*' } });
+const io = socketIo(server, {
+  cors: {
+    origin: "http://localhost:4200", // Allow connections from this origin
+    methods: ["GET", "POST"],
+    allowedHeaders: ["my-custom-header"],
+    credentials: true
+  }
+});
 
-app.use(cors());
-app.use(express.json());
+// Enable CORS for all routes
+app.use(cors({
+  origin: "http://localhost:4200", // Your Angular client origin
+  methods: ["GET", "POST"]
+}));
 
-// Simulate data generation
+// Sample data generation (same as before)
 function generateRecords(N) {
   const records = [];
   for (let i = 0; i < N; i++) {
@@ -27,39 +37,34 @@ function generateRecords(N) {
 }
 
 let currentBatch = 0;
-const BATCH_SIZE = 10; // Update 10 records at a time
+const BATCH_SIZE = 10;
 
 io.on('connection', (socket) => {
   console.log('a user connected');
 
   socket.on('requestRecords', (N) => {
-    const records = generateRecords(N); // Generate records
+    const records = generateRecords(N);
     const totalBatches = Math.ceil(N / BATCH_SIZE);
 
     function sendBatch() {
       const batch = records.slice(currentBatch * BATCH_SIZE, (currentBatch + 1) * BATCH_SIZE);
-
-      // Simulate price change for these 10 records
       batch.forEach((record) => {
-        record.price = (Math.random() * 1000).toFixed(2); // Random price for demo purposes
-        record.lastUpdate = new Date().toISOString(); // Update lastUpdate field
+        record.price = (Math.random() * 1000).toFixed(2); // Simulate price change
+        record.lastUpdate = new Date().toISOString();
       });
 
       const startTime = Date.now();
-
-      socket.emit('liveData', batch); // Emit batch of 10 records with updated prices
-
+      socket.emit('liveData', batch);
       const endTime = Date.now();
-      const delay = endTime - startTime; // Calculate the delay
+      const delay = endTime - startTime;
 
-      // Emit delay stats
       socket.emit('batchStats', { delay, batchNumber: currentBatch + 1, totalBatches });
 
       currentBatch++;
       if (currentBatch < totalBatches) {
-        setTimeout(sendBatch, 100); // Slight delay between batches
+        setTimeout(sendBatch, 100);
       } else {
-        socket.emit('complete'); // Notify client that data is complete
+        socket.emit('complete');
       }
     }
 
@@ -69,4 +74,9 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('user disconnected');
   });
+});
+
+// Start the server
+server.listen(3000, () => {
+  console.log('Server listening on port 3000');
 });
