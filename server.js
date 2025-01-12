@@ -12,6 +12,7 @@ app.use(express.json());
 
 let allRecords = [];
 let nextId = 1; // Global counter for sequential IDs
+let batchSize = 500; // Default batch size for scroll updates
 
 // Generate records with sequential IDs
 function generateRecords(N) {
@@ -50,7 +51,7 @@ io.on('connection', (socket) => {
         socket.emit('batchData', { records: batch });
     });
 
-    // Periodic updates for loaded records
+    // Start periodic live updates
     socket.on('startLiveUpdates', () => {
         if (interval) clearInterval(interval); // Ensure no duplicate intervals
 
@@ -59,7 +60,7 @@ io.on('connection', (socket) => {
 
             const updatedRecords = allRecords
                 .filter((record) => record.id % 4 === 0) // Filter records by `id % 4 === 0`
-                // .slice(0, 5); // Pick 5 filtered records
+                .slice(0, 5); // Pick 5 filtered records
 
             updatedRecords.forEach((record) => {
                 record.price = (Math.random() * 1000).toFixed(2); // Update price
@@ -70,7 +71,7 @@ io.on('connection', (socket) => {
         }, 2000);
     });
 
-    // Handle stopping live updates
+    // Stop live updates
     socket.on('stopLiveUpdates', () => {
         if (interval) {
             clearInterval(interval);
