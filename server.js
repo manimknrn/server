@@ -39,6 +39,7 @@ io.on('connection', (socket) => {
     // Generate records based on user input
     socket.on('generateData', ({ totalRecords }) => {
         console.log(`Generating ${totalRecords} records...`);
+        nextId = 1; // Reset `nextId` to start IDs from 1
         allRecords = generateRecords(totalRecords);
         socket.emit('dataGenerated', { message: `${totalRecords} records generated successfully.` });
     });
@@ -58,7 +59,7 @@ io.on('connection', (socket) => {
 
             const updatedRecords = allRecords
                 .filter((record) => record.id % 4 === 0) // Filter records by `id % 4 === 0`
-                .slice(0, 5); // Pick 5 filtered records
+                // .slice(0, 5); // Pick 5 filtered records
 
             updatedRecords.forEach((record) => {
                 record.price = (Math.random() * 1000).toFixed(2); // Update price
