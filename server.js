@@ -89,7 +89,7 @@ io.on("connection", (socket) => {
         // Send initial data
         const initialData = generateData(numRecords);
         // socket.emit('initial', { records: initialData });
-        socket.emit(JSON.stringify({ type: 'initial', data: initialData }));
+        socket.emit('initial', { data: initialData });
 
         // Simulate real-time updates
         setInterval(() => {
@@ -100,7 +100,7 @@ io.on("connection", (socket) => {
                 const book = createBookName();
                 updates.push(createTradeRecord(product, portfolio, book));
             }
-            socket.emit(JSON.stringify({ type: 'update', data: updates }));
+            socket.emit('update', {data: updates });
         }, 1000);
 
     });
