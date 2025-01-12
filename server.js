@@ -1,11 +1,9 @@
-const express = require('express');
-const http = require('http');
-const socketIo = require('socket.io');
-const cors = require('cors');
+const express = require("express");
+const { WebSocketServer } = require("ws");
+const cors = require("cors");
 
 const app = express();
-const server = http.createServer(app);
-const io = socketIo(server, { cors: { origin: '*' } });
+const port = 3000;
 
 app.use(cors());
 app.use(express.json());
@@ -66,8 +64,9 @@ function createTradeRecord(product, portfolio, book) {
     };
 }
 
-function generateData(N) {
+function generateData(count) {
     const data = [];
+    let generatedCount = 0;
     for (const product of products) {
         for (const portfolio of portfolios) {
             const bookCount = randomBetween(MIN_BOOK_COUNT, MAX_BOOK_COUNT);
@@ -76,6 +75,12 @@ function generateData(N) {
                 const tradeCount = randomBetween(MIN_TRADE_COUNT, MAX_TRADE_COUNT);
                 for (let j = 0; j < tradeCount; j++) {
                     data.push(createTradeRecord(product, portfolio, book));
+                    generatedCount++;
+
+                    // Stop once the count is reached
+                    if (generatedCount >= count) {
+                        return data;
+                    }
                 }
             }
         }
@@ -83,39 +88,64 @@ function generateData(N) {
     return data;
 }
 
-io.on("connection", (socket) => {
+
+const WebSocket = require('ws');
+
+const wss = new WebSocket.Server({ port: 8080 });
+
+wss.on("connection", (ws) => {
     console.log("Client connected");
-    socket.on('requestRecords', ({ numRecords }) => {
-        // Send initial data
-        const initialData = generateData(numRecords);
-        // socket.emit('initial', { records: initialData });
-        socket.emit('initial', { data: initialData });
 
-        // Simulate real-time updates
-        setInterval(() => {
-            const updates = [];
-            for (let i = 0; i < 20000; i++) {
-                const product = products[Math.floor(Math.random() * products.length)];
-                const portfolio = portfolios[Math.floor(Math.random() * portfolios.length)];
-                const book = createBookName();
-                updates.push(createTradeRecord(product, portfolio, book));
-            }
-            socket.emit('update', {data: updates });
-        }, 1000);
+    let intervalId;
 
-    });
+    ws.on('message', (message) => {
+        const payload = JSON.parse(message);
 
-    // Handle disconnection
-    socket.on('disconnect', () => {
-        if (interval) {
-            clearInterval(interval);
+        // Send initial data based on the requested number of records
+        if (payload.type === 'set-record-count') {
+            const { count } = payload;
+            const initialData = generateData(count);
+            ws.send(JSON.stringify({ type: 'initial', data: initialData }));
+
+            // Simulate real-time updates
+            let updateCount = 0; // Track the number of updates sent
+
+            intervalId = setInterval(() => {
+                const updates = [];
+                for (let i = 0; i < count; i++) {
+                    const product = products[Math.floor(Math.random() * products.length)];
+                    const portfolio = portfolios[Math.floor(Math.random() * portfolios.length)];
+                    const book = createBookName();
+                    updates.push(createTradeRecord(product, portfolio, book));
+                }
+
+                // Send the update count and data
+                updateCount += updates.length;
+                ws.send(JSON.stringify({ type: 'update', data: updates, updateCount: updateCount }));
+            }, 1000);
         }
-        console.log('Client disconnected');
+
+        if (payload.type === 'disconnect') {
+            console.log("Client disconnected");
+            ws.close();  // Close the WebSocket connection
+            clearInterval(intervalId);
+        }
     });
+
+    // Handle the connection closure
+    ws.on('close', () => {
+        console.log('Connection closed');
+        clearInterval(intervalId);
+    });
+
+    // ws.on('disconnect', () => {
+    //     clearInterval();
+    //     clearTimeout();
+    //     console.log('user disconnected');
+    // });
 });
 
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+app.listen(port, () => {
+    console.log(`HTTP server running on http://localhost:${port}`);
 });
