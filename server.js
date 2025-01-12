@@ -1,95 +1,153 @@
-const express = require('express');
-const http = require('http');
-const socketIo = require('socket.io');
-const cors = require('cors');
+const express = require("express");
+const { WebSocketServer } = require("ws");
+const cors = require("cors");
 
 const app = express();
-const server = http.createServer(app);
-const io = socketIo(server, { cors: { origin: '*' } });
+const port = 3000;
 
 app.use(cors());
 app.use(express.json());
 
-let allRecords = [];
-let nextId = 1; // Global counter for sequential IDs
-let batchSize = 500; // Default batch size for scroll updates
+let clients = [];
 
-// Generate records with sequential IDs
-function generateRecords(N) {
-    const assets = ['Gold', 'Silver', 'Oil', 'Bitcoin', 'Ethereum', 'Apple', 'Tesla'];
-    const types = ['Buy', 'Sell'];
-    const records = [];
+const MIN_BOOK_COUNT = 10;
+const MAX_BOOK_COUNT = 20;
 
-    for (let i = 0; i < N; i++) {
-        records.push({
-            id: nextId++, // Increment global ID
-            assetName: assets[Math.floor(Math.random() * assets.length)],
-            price: (Math.random() * 1000 + 100).toFixed(2), // Random price between 100 and 1100
-            lastUpdate: new Date().toISOString(),
-            type: types[Math.floor(Math.random() * types.length)],
-        });
-    }
+const MIN_TRADE_COUNT = 1;
+const MAX_TRADE_COUNT = 10;
 
-    return records;
+const products = [
+    'Palm Oil', 'Rubber', 'Wool', 'Amber', 'Copper', 'Lead', 'Zinc', 'Tin',
+    'Aluminium', 'Aluminium Alloy', 'Nickel', 'Cobalt', 'Molybdenum',
+    'Recycled Steel', 'Corn', 'Oats', 'Rough Rice', 'Soybeans', 'Rapeseed',
+    'Soybean Meal', 'Soybean Oil', 'Wheat', 'Milk', 'Coca', 'Coffee C',
+    'Cotton No.2', 'Sugar No.11', 'Sugar No.14',
+];
+
+const portfolios = ['Aggressive', 'Defensive', 'Income', 'Speculative', 'Hybrid'];
+
+let nextBookId = 62472;
+let nextTradeId = 0; //24287;
+
+function randomBetween(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-io.on('connection', (socket) => {
-    console.log('Client connected');
-    let interval = null;
+function createBookName() {
+    nextBookId++;
+    return 'GL-' + nextBookId;
+}
 
-    // Generate records based on user input
-    socket.on('generateData', ({ totalRecords }) => {
-        console.log(`Generating ${totalRecords} records...`);
-        nextId = 1; // Reset `nextId` to start IDs from 1
-        allRecords = generateRecords(totalRecords);
-        socket.emit('dataGenerated', { message: `${totalRecords} records generated successfully.` });
-    });
+function createTradeId() {
+    nextTradeId++;
+    return nextTradeId;
+}
 
-    // Handle scroll-based data fetch
-    socket.on('getBatch', ({ startIndex, batchSize }) => {
-        const batch = allRecords.slice(startIndex, startIndex + batchSize);
-        socket.emit('batchData', { records: batch });
-    });
+function createTradeRecord(product, portfolio, book) {
+    const current = Math.floor(Math.random() * 100000) + 100;
+    const previous = current + Math.floor(Math.random() * 10000) - 2000;
 
-    // Start periodic live updates
-    socket.on('startLiveUpdates', () => {
-        if (interval) clearInterval(interval); // Ensure no duplicate intervals
+    return {
+        product: product,
+        portfolio: portfolio,
+        book: book,
+        trade: createTradeId(),
+        submitterID: randomBetween(10, 1000),
+        submitterDealID: randomBetween(10, 1000),
+        dealType: Math.random() < 0.2 ? 'Physical' : 'Financial',
+        bidFlag: Math.random() < 0.5 ? 'Buy' : 'Sell',
+        current: current,
+        previous: previous,
+        pl1: randomBetween(100, 1000),
+        pl2: randomBetween(100, 1000),
+        gainDx: randomBetween(100, 1000),
+        sxPx: randomBetween(100, 1000),
+        _99Out: randomBetween(100, 1000),
+    };
+}
 
-        interval = setInterval(() => {
-            if (!allRecords.length) return;
+function generateData() {
+    // const data = [];
+    // for (let i = 0; i < products.length; i++) {
+    //     const product = products[i];
+    //     for (let j = 0; j < portfolios.length; j++) {
+    //         const portfolio = portfolios[j];
+    //         const bookCount = randomBetween(MIN_BOOK_COUNT, MAX_BOOK_COUNT);
 
-            const updatedRecords = allRecords
-                .filter((record) => record.id % 4 === 0) // Filter records by `id % 4 === 0`
-                .slice(0, 5); // Pick 5 filtered records
+    //         for (let k = 0; k < bookCount; k++) {
+    //             const book = createBookName();
+    //             const tradeCount = randomBetween(MIN_TRADE_COUNT, MAX_TRADE_COUNT);
 
-            updatedRecords.forEach((record) => {
-                record.price = (Math.random() * 1000).toFixed(2); // Update price
-                record.lastUpdate = new Date().toISOString(); // Update timestamp
-            });
+    //             for (let l = 0; l < tradeCount; l++) {
+    //                 const trade = createTradeRecord(product, portfolio, book);
+    //                 data.push(trade);
+    //             }
+    //         }
+    //     }
+    // }
+    // return data;
 
-            socket.emit('liveUpdates', { records: updatedRecords });
-        }, 2000);
-    });
-
-    // Stop live updates
-    socket.on('stopLiveUpdates', () => {
-        if (interval) {
-            clearInterval(interval);
-            interval = null;
-            console.log('Live updates stopped.');
+    const data = [];
+    for (const product of products) {
+        for (const portfolio of portfolios) {
+            const bookCount = randomBetween(MIN_BOOK_COUNT, MAX_BOOK_COUNT);
+            for (let i = 0; i < bookCount; i++) {
+                const book = createBookName();
+                const tradeCount = randomBetween(MIN_TRADE_COUNT, MAX_TRADE_COUNT);
+                for (let j = 0; j < tradeCount; j++) {
+                    data.push(createTradeRecord(product, portfolio, book));
+                }
+            }
         }
-    });
+    }
+    return data;
+}
 
-    // Handle disconnection
-    socket.on('disconnect', () => {
-        if (interval) {
-            clearInterval(interval);
+
+const WebSocket = require('ws');
+
+const wss = new WebSocket.Server({ port: 8080 });
+
+wss.on("connection", (ws) => {
+    console.log("Client connected");
+
+    // setInterval(() => {
+    //   // Generate mock data updates
+    //   const data = Array.from({ length: 10 }, (_, i) => ({
+    //     trade: 24288 + 1, // Unique trade ID
+    //     current: Math.floor(Math.random() * 100000) + 100,
+    //   }));
+
+    //   ws.send(JSON.stringify(data)); // Send updates as JSON
+    // }, 500);
+
+    // Simulate sending updates every second
+    // setInterval(() => {
+    //     const data = generateData();
+    //     const updates = data.slice(0, 20); // Send only a few updates at a time
+    //     ws.send(JSON.stringify(updates));
+    // }, 1000);
+
+    // Send initial data
+    const initialData = generateData();
+    ws.send(JSON.stringify({ type: 'initial', data: initialData }));
+
+    // Simulate real-time updates
+    setInterval(() => {
+        const updates = [];
+        for (let i = 0; i < 20000; i++) {
+            const product = products[Math.floor(Math.random() * products.length)];
+            const portfolio = portfolios[Math.floor(Math.random() * portfolios.length)];
+            const book = createBookName();
+            updates.push(createTradeRecord(product, portfolio, book));
         }
-        console.log('Client disconnected');
-    });
+        ws.send(JSON.stringify({ type: 'update', data: updates }));
+    }, 1000);
+
+
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+
+app.listen(port, () => {
+    console.log(`HTTP server running on http://localhost:${port}`);
 });
