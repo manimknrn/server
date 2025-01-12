@@ -1,14 +1,14 @@
-const express = require("express");
-const { WebSocketServer } = require("ws");
-const cors = require("cors");
+const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
+const cors = require('cors');
 
 const app = express();
-const port = 3000;
+const server = http.createServer(app);
+const io = socketIo(server, { cors: { origin: '*' } });
 
 app.use(cors());
 app.use(express.json());
-
-let clients = [];
 
 const MIN_BOOK_COUNT = 10;
 const MAX_BOOK_COUNT = 20;
@@ -66,27 +66,7 @@ function createTradeRecord(product, portfolio, book) {
     };
 }
 
-function generateData() {
-    // const data = [];
-    // for (let i = 0; i < products.length; i++) {
-    //     const product = products[i];
-    //     for (let j = 0; j < portfolios.length; j++) {
-    //         const portfolio = portfolios[j];
-    //         const bookCount = randomBetween(MIN_BOOK_COUNT, MAX_BOOK_COUNT);
-
-    //         for (let k = 0; k < bookCount; k++) {
-    //             const book = createBookName();
-    //             const tradeCount = randomBetween(MIN_TRADE_COUNT, MAX_TRADE_COUNT);
-
-    //             for (let l = 0; l < tradeCount; l++) {
-    //                 const trade = createTradeRecord(product, portfolio, book);
-    //                 data.push(trade);
-    //             }
-    //         }
-    //     }
-    // }
-    // return data;
-
+function generateData(N) {
     const data = [];
     for (const product of products) {
         for (const portfolio of portfolios) {
@@ -103,51 +83,39 @@ function generateData() {
     return data;
 }
 
-
-const WebSocket = require('ws');
-
-const wss = new WebSocket.Server({ port: 8080 });
-
-wss.on("connection", (ws) => {
+io.on("connection", (socket) => {
     console.log("Client connected");
+    socket.on('requestRecords', ({ numRecords }) => {
+        // Send initial data
+        const initialData = generateData(numRecords);
+        // socket.emit('initial', { records: initialData });
+        socket.emit(JSON.stringify({ type: 'initial', data: initialData }));
 
-    // setInterval(() => {
-    //   // Generate mock data updates
-    //   const data = Array.from({ length: 10 }, (_, i) => ({
-    //     trade: 24288 + 1, // Unique trade ID
-    //     current: Math.floor(Math.random() * 100000) + 100,
-    //   }));
+        // Simulate real-time updates
+        setInterval(() => {
+            const updates = [];
+            for (let i = 0; i < 20000; i++) {
+                const product = products[Math.floor(Math.random() * products.length)];
+                const portfolio = portfolios[Math.floor(Math.random() * portfolios.length)];
+                const book = createBookName();
+                updates.push(createTradeRecord(product, portfolio, book));
+            }
+            socket.emit(JSON.stringify({ type: 'update', data: updates }));
+        }, 1000);
 
-    //   ws.send(JSON.stringify(data)); // Send updates as JSON
-    // }, 500);
+    });
 
-    // Simulate sending updates every second
-    // setInterval(() => {
-    //     const data = generateData();
-    //     const updates = data.slice(0, 20); // Send only a few updates at a time
-    //     ws.send(JSON.stringify(updates));
-    // }, 1000);
-
-    // Send initial data
-    const initialData = generateData();
-    ws.send(JSON.stringify({ type: 'initial', data: initialData }));
-
-    // Simulate real-time updates
-    setInterval(() => {
-        const updates = [];
-        for (let i = 0; i < 20000; i++) {
-            const product = products[Math.floor(Math.random() * products.length)];
-            const portfolio = portfolios[Math.floor(Math.random() * portfolios.length)];
-            const book = createBookName();
-            updates.push(createTradeRecord(product, portfolio, book));
+    // Handle disconnection
+    socket.on('disconnect', () => {
+        if (interval) {
+            clearInterval(interval);
         }
-        ws.send(JSON.stringify({ type: 'update', data: updates }));
-    }, 1000);
-
-
+        console.log('Client disconnected');
+    });
 });
 
 
-app.listen(port, () => {
-    console.log(`HTTP server running on http://localhost:${port}`);
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
